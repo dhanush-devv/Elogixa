@@ -16,7 +16,7 @@ const dialogflowWebhook = async (req, res) => {
         const country = typeof rawCountry === 'object' ? (rawCountry?.['country'] || rawCountry?.name || '') : rawCountry;
         const service = params.service || '';
         const message = params.message || '';
-       
+      
 
         // If not all params collected yet, let Dialogflow handle slot filling
         if (!allParamsPresent || !name || !email || !country || !service || !message) {
