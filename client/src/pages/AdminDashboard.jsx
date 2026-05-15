@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
-import { Plus, Trash2, FileText, LogOut, Loader2, Bookmark } from 'lucide-react';
+import { Plus, Trash2, FileText, LogOut, Loader2, Bookmark, Search, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -26,15 +26,27 @@ const AdminDashboard = () => {
         skill: 'all',
         atsScore: 'all',
     });
+    const [messageSearch, setMessageSearch] = useState('');
+    const [messageFilters, setMessageFilters] = useState({ service: 'all', country: 'all', dateSort: 'newest' });
+    const [isDeletingAllMessages, setIsDeletingAllMessages] = useState(false);
+    const [deleteBeforeModal, setDeleteBeforeModal] = useState(false);
+    const [deleteBeforeDate, setDeleteBeforeDate] = useState('');
+    const [deleteAppBeforeModal, setDeleteAppBeforeModal] = useState(false);
+    const [deleteAppBeforeDate, setDeleteAppBeforeDate] = useState('');
+    const [isDeletingAllApps, setIsDeletingAllApps] = useState(false);
+    const [deleteAppFilters, setDeleteAppFilters] = useState({ jobRole: 'all', status: 'all', experience: 'all', atsScore: 'all' });
     const navigate = useNavigate();
     const savedApplications = applications.filter((app) => app.isSavedForFuture);
 
-    const authAxios = useMemo(() => axios.create({
-        baseURL: `${API_BASE_URL}/api`,
-        headers: {
-            Authorization: `Bearer ${localStorage.getItem('adminToken')}`
-        }
-    }), []);
+    const authAxios = useMemo(() => {
+        const instance = axios.create({ baseURL: `${API_BASE_URL}/api` });
+        instance.interceptors.request.use((config) => {
+            const token = localStorage.getItem('adminToken');
+            if (token) config.headers.Authorization = `Bearer ${token}`;
+            return config;
+        });
+        return instance;
+    }, []);
 
     const handleAuthError = useCallback((err) => {
         if (err.response?.status === 401) {
@@ -104,6 +116,9 @@ const AdminDashboard = () => {
             } else if (deleteModal.type === 'application') {
                 await authAxios.delete(`/applications/${deleteModal.id}`);
                 toast.success('Application deleted successfully!');
+            } else if (deleteModal.type === 'message') {
+                await authAxios.delete(`/contact/${deleteModal.id}`);
+                toast.success('Message deleted.');
             }
             setDeleteModal({ isOpen: false, id: null, type: null });
             fetchData();
@@ -151,6 +166,53 @@ const AdminDashboard = () => {
             }
         } finally {
             setActioningAdmins(prev => ({ ...prev, [id]: null }));
+        }
+    };
+
+    const handleDeleteMessage = (id) => {
+        setDeleteModal({ isOpen: true, id, type: 'message' });
+    };
+
+    const handleDeleteAllMessages = async () => {
+        if (!deleteBeforeDate) return;
+        setIsDeletingAllMessages(true);
+        try {
+            // Set time to end of selected day so the full day is included
+            const endOfDay = new Date(deleteBeforeDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            await authAxios.delete(`/contact?before=${endOfDay.toISOString()}`);
+            toast.success(`Messages before ${new Date(deleteBeforeDate).toLocaleDateString()} deleted.`);
+            setDeleteBeforeModal(false);
+            setDeleteBeforeDate('');
+            fetchData();
+        } catch (err) {
+            if (!handleAuthError(err)) toast.error('Failed to delete messages');
+        } finally {
+            setIsDeletingAllMessages(false);
+        }
+    };
+
+    const handleDeleteAllApplications = async () => {
+        if (!deleteAppBeforeDate) return;
+        setIsDeletingAllApps(true);
+        try {
+            const endOfDay = new Date(deleteAppBeforeDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            const params = new URLSearchParams({ before: endOfDay.toISOString() });
+            if (deleteAppFilters.jobRole !== 'all') params.set('jobRole', deleteAppFilters.jobRole);
+            if (deleteAppFilters.status !== 'all') params.set('status', deleteAppFilters.status);
+            if (deleteAppFilters.experience !== 'all') params.set('experience', deleteAppFilters.experience);
+            if (deleteAppFilters.atsScore !== 'all') params.set('atsScore', deleteAppFilters.atsScore);
+            await authAxios.delete(`/applications?${params.toString()}`);
+            toast.success(`Applications deleted.`);
+            setDeleteAppBeforeModal(false);
+            setDeleteAppBeforeDate('');
+            setDeleteAppFilters({ jobRole: 'all', status: 'all', experience: 'all', atsScore: 'all' });
+            fetchData();
+        } catch (err) {
+            if (!handleAuthError(err)) toast.error('Failed to delete applications');
+        } finally {
+            setIsDeletingAllApps(false);
         }
     };
 
@@ -250,6 +312,33 @@ const AdminDashboard = () => {
         });
     }, [applications, applicationFilters]);
 
+    const filteredMessages = useMemo(() => {
+        let result = [...messages];
+        const q = messageSearch.trim().toLowerCase();
+        if (q) {
+            result = result.filter(m =>
+                m.name?.toLowerCase().includes(q) ||
+                m.email?.toLowerCase().includes(q) ||
+                m.message?.toLowerCase().includes(q) ||
+                m.country?.toLowerCase().includes(q)
+            );
+        }
+        if (messageFilters.service !== 'all') {
+            result = result.filter(m => m.service === messageFilters.service);
+        }
+        if (messageFilters.country !== 'all') {
+            result = result.filter(m => m.country?.toLowerCase() === messageFilters.country.toLowerCase());
+        }
+        result.sort((a, b) => {
+            const da = new Date(a.createdAt), db = new Date(b.createdAt);
+            return messageFilters.dateSort === 'newest' ? db - da : da - db;
+        });
+        return result;
+    }, [messages, messageSearch, messageFilters]);
+
+    const messageServiceOptions = useMemo(() => [...new Set(messages.map(m => m.service).filter(Boolean))].sort(), [messages]);
+    const messageCountryOptions = useMemo(() => [...new Set(messages.map(m => m.country).filter(Boolean))].sort(), [messages]);
+
     return (
         <div className="min-h-screen bg-[#fffdf7]">
             <div className="border-b border-[#ece7d8] bg-white/90 backdrop-blur-md sticky top-0 z-30">
@@ -332,13 +421,24 @@ const AdminDashboard = () => {
                                     <h3 className="text-lg font-bold text-slate-800">Application Filters</h3>
 
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setApplicationFilters({ jobRole: 'all', experience: 'all', skill: 'all', atsScore: 'all' })}
-                                    className="text-sm font-medium text-accent hover:underline self-start lg:self-auto"
-                                >
-                                    Clear filters
-                                </button>
+                                <div className="flex items-center gap-3 self-start lg:self-auto">
+                                    <button
+                                        type="button"
+                                        onClick={() => setApplicationFilters({ jobRole: 'all', experience: 'all', skill: 'all', atsScore: 'all' })}
+                                        className="text-sm font-medium text-accent hover:underline"
+                                    >
+                                        Clear filters
+                                    </button>
+                                    {applications.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { setDeleteAppBeforeDate(''); setDeleteAppFilters({ jobRole: 'all', status: 'all', experience: 'all', atsScore: 'all' }); setDeleteAppBeforeModal(true); }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+                                        >
+                                            <Trash2 size={14} /> Delete All
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
@@ -537,26 +637,119 @@ const AdminDashboard = () => {
                 )}
 
                 {activeTab === 'messages' && (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {messages.length === 0 ? (
-                            <p className="text-slate-500 col-span-full text-center py-8">No messages yet.</p>
-                        ) : (
-                            messages.map(msg => (
-                                <div key={msg._id} className="card bg-white shadow-sm">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h4 className="font-bold text-slate-800">{msg.name}</h4>
-                                            <p className="text-xs text-accent">{msg.email}</p>
-                                            {msg.service && <p className="text-xs text-slate-500 font-medium mt-1">Service: {msg.service}</p>}
-                                        </div>
-                                        <span className="text-xs text-slate-500 flex flex-col items-end gap-1">
-                                            <span>{new Date(msg.createdAt).toLocaleDateString()}</span>
-                                            {msg.country && <span className="bg-slate-100 px-2 py-0.5 rounded-full text-[10px] text-slate-600">{msg.country}</span>}
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-slate-600 whitespace-pre-wrap">{msg.message}</p>
+                    <div>
+                        {/* Toolbar */}
+                        <div className="bg-white border border-[#ece7d8] rounded-2xl p-4 sm:p-5 mb-6 shadow-sm">
+                            <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+                                {/* Search */}
+                                <div className="flex-1 relative">
+                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search by name, email, message, country..."
+                                        value={messageSearch}
+                                        onChange={e => setMessageSearch(e.target.value)}
+                                        className="input-field pl-9 h-10 w-full"
+                                    />
+                                    {messageSearch && (
+                                        <button onClick={() => setMessageSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                            <X size={14} />
+                                        </button>
+                                    )}
                                 </div>
-                            ))
+
+                                {/* Service filter */}
+                                <div className="w-full lg:w-52">
+                                    <select
+                                        value={messageFilters.service}
+                                        onChange={e => setMessageFilters(p => ({ ...p, service: e.target.value }))}
+                                        className="input-field h-10 w-full"
+                                    >
+                                        <option value="all">All Services</option>
+                                        {messageServiceOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+
+                                {/* Country filter */}
+                                <div className="w-full lg:w-44">
+                                    <select
+                                        value={messageFilters.country}
+                                        onChange={e => setMessageFilters(p => ({ ...p, country: e.target.value }))}
+                                        className="input-field h-10 w-full"
+                                    >
+                                        <option value="all">All Countries</option>
+                                        {messageCountryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+
+                                {/* Date sort */}
+                                <div className="w-full lg:w-40">
+                                    <select
+                                        value={messageFilters.dateSort}
+                                        onChange={e => setMessageFilters(p => ({ ...p, dateSort: e.target.value }))}
+                                        className="input-field h-10 w-full"
+                                    >
+                                        <option value="newest">Newest First</option>
+                                        <option value="oldest">Oldest First</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#f0eadc]">
+                                <p className="text-sm text-slate-600">
+                                    Showing <span className="font-semibold text-slate-800">{filteredMessages.length}</span> of <span className="font-semibold text-slate-800">{messages.length}</span> messages
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => { setMessageSearch(''); setMessageFilters({ service: 'all', country: 'all', dateSort: 'newest' }); }}
+                                        className="text-sm text-accent hover:underline"
+                                    >
+                                        Clear filters
+                                    </button>
+                                    {messages.length > 0 && (
+                                        <button
+                                            onClick={() => { setDeleteBeforeDate(''); setDeleteBeforeModal(true); }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+                                        >
+                                            <Trash2 size={14} /> Delete All
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Cards */}
+                        {filteredMessages.length === 0 ? (
+                            <p className="text-slate-500 text-center py-12">No messages match your filters.</p>
+                        ) : (
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {filteredMessages.map(msg => (
+                                    <div key={msg._id} className="card bg-white shadow-sm flex flex-col justify-between">
+                                        <div>
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="flex-1 min-w-0 pr-2">
+                                                    <h4 className="font-bold text-slate-800 truncate">{msg.name}</h4>
+                                                    <p className="text-xs text-accent truncate">{msg.email}</p>
+                                                    {msg.service && <p className="text-xs text-slate-500 font-medium mt-1">Service: {msg.service}</p>}
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                                    <span className="text-xs text-slate-500">{new Date(msg.createdAt).toLocaleDateString()}</span>
+                                                    {msg.country && <span className="bg-slate-100 px-2 py-0.5 rounded-full text-[10px] text-slate-600">{msg.country}</span>}
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-slate-600 whitespace-pre-wrap">{msg.message}</p>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-[#f0eadc] flex justify-end">
+                                            <button
+                                                onClick={() => handleDeleteMessage(msg._id)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                                            >
+                                                <Trash2 size={13} /> Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 )}
@@ -698,6 +891,155 @@ const AdminDashboard = () => {
                                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2 disabled:bg-red-400 disabled:cursor-not-allowed"
                             >
                                 {isDeleting ? <><Loader2 size={16} className="animate-spin" /> Deleting...</> : <><Trash2 size={16} /> Delete</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteBeforeModal && (
+                <div className="fixed inset-0 bg-slate-900/25 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setDeleteBeforeModal(false)}>
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 border border-[#ece7d8] shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-bold text-slate-800 mb-1">Delete Messages by Date</h3>
+                        <p className="text-sm text-slate-500 mb-5">
+                            All contact queries received <span className="font-semibold text-slate-700">on or before</span> the selected date will be permanently deleted.
+                        </p>
+
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Select date</label>
+                        <input
+                            type="date"
+                            value={deleteBeforeDate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={e => setDeleteBeforeDate(e.target.value)}
+                            className="input-field w-full mb-2"
+                        />
+                        {deleteBeforeDate && (
+                            <p className="text-xs text-red-500 mb-4">
+                                This will delete all messages received on or before <span className="font-semibold">{new Date(deleteBeforeDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>.
+                            </p>
+                        )}
+
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button
+                                onClick={() => setDeleteBeforeModal(false)}
+                                className="px-4 py-2 bg-[#f7f5ec] text-slate-700 rounded-lg hover:bg-[#efe9d8] transition-colors text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteAllMessages}
+                                disabled={!deleteBeforeDate || isDeletingAllMessages}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isDeletingAllMessages ? <><Loader2 size={15} className="animate-spin" /> Deleting...</> : <><Trash2 size={15} /> Confirm Delete</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteAppBeforeModal && (
+                <div className="fixed inset-0 bg-slate-900/25 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setDeleteAppBeforeModal(false)}>
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-[#ece7d8] shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-bold text-slate-800 mb-1">Delete Applications</h3>
+                        <p className="text-sm text-slate-500 mb-5">
+                            Set filters below. All matching applications submitted <span className="font-semibold text-slate-700">on or before</span> the selected date will be permanently deleted.
+                        </p>
+
+                        <div className="space-y-3">
+                            {/* Date — required */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Date <span className="text-red-500">*</span></label>
+                                <input
+                                    type="date"
+                                    value={deleteAppBeforeDate}
+                                    max={new Date().toISOString().split('T')[0]}
+                                    onChange={e => setDeleteAppBeforeDate(e.target.value)}
+                                    className="input-field w-full"
+                                />
+                            </div>
+
+                            {/* Job Role */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Job Role</label>
+                                <select
+                                    value={deleteAppFilters.jobRole}
+                                    onChange={e => setDeleteAppFilters(p => ({ ...p, jobRole: e.target.value }))}
+                                    className="input-field w-full"
+                                >
+                                    <option value="all">All job roles</option>
+                                    {applicationRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Status */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                                <select
+                                    value={deleteAppFilters.status}
+                                    onChange={e => setDeleteAppFilters(p => ({ ...p, status: e.target.value }))}
+                                    className="input-field w-full"
+                                >
+                                    <option value="all">All statuses</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Under Review">Under Review</option>
+                                    <option value="Shortlisted">Shortlisted</option>
+                                    <option value="Rejected">Rejected</option>
+                                    <option value="Accepted">Accepted</option>
+                                </select>
+                            </div>
+
+                            {/* Experience */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Experience</label>
+                                <select
+                                    value={deleteAppFilters.experience}
+                                    onChange={e => setDeleteAppFilters(p => ({ ...p, experience: e.target.value }))}
+                                    className="input-field w-full"
+                                >
+                                    <option value="all">All experience levels</option>
+                                    <option value="0">Freshers only (0 years)</option>
+                                    <option value="1-2">1 to 2 years</option>
+                                    <option value="3-5">3 to 5 years</option>
+                                    <option value="6+">6+ years</option>
+                                </select>
+                            </div>
+
+                            {/* ATS Score */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Maximum ATS Score (delete below)</label>
+                                <select
+                                    value={deleteAppFilters.atsScore}
+                                    onChange={e => setDeleteAppFilters(p => ({ ...p, atsScore: e.target.value }))}
+                                    className="input-field w-full"
+                                >
+                                    <option value="all">All scores</option>
+                                    <option value="50">Below 50%</option>
+                                    <option value="75">Below 75%</option>
+                                    <option value="90">Below 90%</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {deleteAppBeforeDate && (
+                            <p className="text-xs text-red-500 mt-3">
+                                ⚠ This will permanently delete all matching applications on or before <span className="font-semibold">{new Date(deleteAppBeforeDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span>.
+                            </p>
+                        )}
+
+                        <div className="flex justify-end gap-3 mt-5">
+                            <button
+                                onClick={() => setDeleteAppBeforeModal(false)}
+                                className="px-4 py-2 bg-[#f7f5ec] text-slate-700 rounded-lg hover:bg-[#efe9d8] transition-colors text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteAllApplications}
+                                disabled={!deleteAppBeforeDate || isDeletingAllApps}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isDeletingAllApps ? <><Loader2 size={15} className="animate-spin" /> Deleting...</> : <><Trash2 size={15} /> Confirm Delete</>}
                             </button>
                         </div>
                     </div>

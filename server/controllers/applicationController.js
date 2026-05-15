@@ -136,38 +136,46 @@ const getAllApplications = async (req, res) => {
 
 const updateApplicationStatus = async (req, res) => {
     try {
+        const { status: newStatus } = req.body;
+
+        if (!newStatus) {
+            return res.status(400).json({ message: 'Status is required' });
+        }
+
         const application = await Application.findById(req.params.id).populate('jobId', 'title');
         if (!application) return res.status(404).json({ message: 'Application not found' });
 
         const oldStatus = application.status;
-        const newStatus = req.body.status;
 
-        if (newStatus && oldStatus !== newStatus) {
-            application.status = newStatus;
-            const updatedApplication = await application.save();
-
-            // Send email notification
-            const jobTitle = application.jobId ? application.jobId.title : 'Position';
-            const emailResult = await sendStatusUpdateEmail(
-                application.email,
-                application.name,
-                jobTitle,
-                newStatus
-            );
-
-            if (!emailResult.success) {
-                console.error('Failed to send email:', emailResult.error);
-            }
-
-            res.json({
-                ...updatedApplication.toObject(),
-                emailSent: emailResult.success
-            });
-        } else {
-            res.json(application);
+        if (oldStatus === newStatus) {
+            return res.json({ ...application.toObject(), emailSent: false });
         }
+
+        // Use updateOne to bypass unique index conflicts on deleted-job applications
+        await Application.updateOne({ _id: req.params.id }, { $set: { status: newStatus } });
+
+        // Send email notification
+        const jobTitle = application.jobId ? application.jobId.title : 'Position';
+        const emailResult = await sendStatusUpdateEmail(
+            application.email,
+            application.name,
+            jobTitle,
+            newStatus
+        );
+
+        if (!emailResult.success) {
+            console.error('Failed to send email:', emailResult.error);
+        }
+
+        const updatedApplication = await Application.findById(req.params.id).populate('jobId', 'title');
+
+        res.json({
+            ...updatedApplication.toObject(),
+            emailSent: emailResult.success
+        });
     } catch (err) {
-        res.status(400).json({ message: err.message });
+        console.error('Status update error:', err.message);
+        res.status(500).json({ message: err.message });
     }
 };
 
@@ -199,10 +207,64 @@ const toggleSavedResume = async (req, res) => {
     }
 };
 
+const deleteAllApplications = async (req, res) => {
+    try {
+        const { before, jobRole, status, experience, atsScore } = req.query;
+
+        const filter = {};
+
+        // Date filter — required
+        if (before) {
+            filter.submittedAt = { $lt: new Date(before) };
+        }
+
+        // Status filter
+        if (status && status !== 'all') {
+            filter.status = status;
+        }
+
+        // ATS score filter — delete below this threshold
+        if (atsScore && atsScore !== 'all') {
+            const threshold = parseInt(atsScore, 10);
+            filter.atsScore = { $lt: threshold };
+        }
+
+        // Experience filter
+        if (experience && experience !== 'all') {
+            if (experience === '0') {
+                filter.experienceYears = 0;
+            } else if (experience === '1-2') {
+                filter.experienceYears = { $gte: 1, $lte: 2 };
+            } else if (experience === '3-5') {
+                filter.experienceYears = { $gte: 3, $lte: 5 };
+            } else if (experience === '6+') {
+                filter.experienceYears = { $gte: 6 };
+            }
+        }
+
+        // Job role filter — need to look up the job _id by title
+        if (jobRole && jobRole !== 'all') {
+            const job = await Job.findOne({ title: jobRole });
+            if (job) {
+                filter.jobId = job._id;
+            } else {
+                // No matching job found — nothing to delete
+                return res.json({ message: '0 application(s) deleted' });
+            }
+        }
+
+        const result = await Application.deleteMany(filter);
+        res.json({ message: `${result.deletedCount} application(s) deleted` });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
 module.exports = {
     submitApplication,
     getAllApplications,
     updateApplicationStatus,
     toggleSavedResume,
-    deleteApplication
+    deleteApplication,
+    deleteAllApplications
 };

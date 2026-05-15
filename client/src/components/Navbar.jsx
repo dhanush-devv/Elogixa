@@ -78,6 +78,18 @@ const Navbar = () => {
                             <Link to="/" onClick={handleNavClick}className="text-sm font-medium text-slate-700 hover:text-accent transition-colors">Home</Link>
                             <Link to="/jobs" onClick={handleNavClick} className="text-sm font-medium text-slate-700 hover:text-accent transition-colors">Careers</Link>
                             <Link to="/services" onClick={handleNavClick} className="text-sm font-medium text-slate-700 hover:text-accent transition-colors">Our Services</Link>
+                            <Link
+                                to="/#contact"
+                                onClick={() => {
+                                    setIsOpen(false);
+                                    setTimeout(() => {
+                                        document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
+                                    }, 50);
+                                }}
+                                className="text-sm font-medium text-slate-700 hover:text-accent transition-colors"
+                            >
+                                Contact Us
+                            </Link>
 
                             {authUser ? (
                                 renderProfileButton()
@@ -138,6 +150,18 @@ const Navbar = () => {
                                 <Link  onClick={()=>{scrollTo(0,0);setIsOpen(false)}} to='/' className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-accent hover:bg-amber-50">Home</Link>
                                 <Link  onClick={()=>{scrollTo(0,0);setIsOpen(false)}} to='/jobs' className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-accent hover:bg-amber-50">Careers</Link>
                                 <Link  onClick={()=>{scrollTo(0,0);setIsOpen(false)}} to='/services' className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-accent hover:bg-amber-50">Our Services</Link>
+                                <Link
+                                    to="/#contact"
+                                    onClick={() => {
+                                        setIsOpen(false);
+                                        setTimeout(() => {
+                                            document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
+                                        }, 50);
+                                    }}
+                                    className="block px-3 py-2 rounded-md text-base font-medium text-slate-700 hover:text-accent hover:bg-amber-50"
+                                >
+                                    Contact Us
+                                </Link>
 
                                 {authUser ? (
                                     <>

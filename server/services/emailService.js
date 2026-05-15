@@ -1,13 +1,6 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// Create transporter
-const transporter = nodemailer.createTransport({
-    service: process.env.EMAIL_SERVICE || 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-    }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Email templates based on status
 const getEmailTemplate = (applicantName, jobTitle, status) => {
@@ -96,32 +89,36 @@ const getEmailTemplate = (applicantName, jobTitle, status) => {
     };
 };
 
-// Send status update email
+// Send status update email to applicant
 const sendStatusUpdateEmail = async (applicantEmail, applicantName, jobTitle, newStatus) => {
     try {
-        // Only send email for specific statuses (not for "Pending")
         if (newStatus === 'Pending') {
             return { success: true, message: 'No email sent for Pending status' };
         }
 
         const template = getEmailTemplate(applicantName, jobTitle, newStatus);
 
-        const mailOptions = {
-            from: `Elogixa HR <${process.env.EMAIL_USER}>`,
+        const { data, error } = await resend.emails.send({
+            from: 'Elogixa HR <onboarding@resend.dev>',
             to: applicantEmail,
             subject: template.subject,
             html: template.html
-        };
+        });
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log('Email sent:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        if (error) {
+            console.error('Error sending status email:', error);
+            return { success: false, error: error.message };
+        }
+
+        console.log('Status update email sent:', data.id);
+        return { success: true, messageId: data.id };
     } catch (error) {
-        console.error('Error sending email:', error);
+        console.error('Error sending status email:', error);
         return { success: false, error: error.message };
     }
 };
 
+// Send contact notification email to admin
 const sendContactNotificationEmail = async ({ name, email, country, service, message }) => {
     try {
         const safeName = name || 'Unknown sender';
@@ -130,10 +127,12 @@ const sendContactNotificationEmail = async ({ name, email, country, service, mes
         const safeService = service || 'Not provided';
         const safeMessage = message || 'No message provided';
 
-        const info = await transporter.sendMail({
-            from: `Elogixa Website <${process.env.EMAIL_USER}>`,
-            to: `${process.env.CONTACT_NOTIFICATION_EMAIL}`,
-            replyTo: safeEmail,
+        console.log('📧 Sending contact notification to:', process.env.CONTACT_NOTIFICATION_EMAIL);
+
+        const { data, error } = await resend.emails.send({
+            from: 'Elogixa Website <onboarding@resend.dev>',
+            to: process.env.CONTACT_NOTIFICATION_EMAIL,
+            reply_to: safeEmail,
             subject: `New client website enquiry from ${safeName}`,
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto;">
@@ -165,8 +164,13 @@ const sendContactNotificationEmail = async ({ name, email, country, service, mes
             `
         });
 
-        console.log('Contact notification email sent:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        if (error) {
+            console.error('Error sending contact notification email:', error);
+            return { success: false, error: error.message };
+        }
+
+        console.log('Contact notification email sent:', data.id);
+        return { success: true, messageId: data.id };
     } catch (error) {
         console.error('Error sending contact notification email:', error);
         return { success: false, error: error.message };

@@ -6,7 +6,8 @@ const {
     getAllApplications,
     updateApplicationStatus,
     toggleSavedResume,
-    deleteApplication
+    deleteApplication,
+    deleteAllApplications
 } = require('../controllers/applicationController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -15,6 +16,9 @@ router.post('/', upload.single('resume'), submitApplication);
 
 // GET all applications (Admin)
 router.get('/', protect, getAllApplications);
+
+// DELETE all applications before a date (Admin)
+router.delete('/', protect, deleteAllApplications);
 
 // UPDATE application status (Admin only)
 router.patch('/:id/status', protect, updateApplicationStatus);

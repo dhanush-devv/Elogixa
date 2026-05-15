@@ -44,11 +44,19 @@ const Home = () => {
                             transition={{ delay: 0.4, duration: 0.5 }}
                             className="flex flex-col sm:flex-row justify-center gap-4"
                         >
-                            <Link to="/jobs" className="btn-primary flex items-center justify-center gap-2 group w-full sm:w-auto shadow-lg shadow-amber-200/60">
-                                Join Our Team <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                            <Link to="/services" className="btn-primary flex items-center justify-center gap-2 group w-full sm:w-auto shadow-lg shadow-amber-200/60">
+                                Our Services <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                             </Link>
-                            <Link to="/services" className="btn-outline w-full sm:w-auto text-center bg-white/80 border-[#d7d0b9] text-slate-700 hover:bg-white">
-                                Our Services
+                            <Link
+                                to="/#contact"
+                                onClick={() => {
+                                    setTimeout(() => {
+                                        document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
+                                    }, 50);
+                                }}
+                                className="btn-outline w-full sm:w-auto text-center bg-white/80 border-[#d7d0b9] text-slate-700 hover:bg-white"
+                            >
+                                Contact Us
                             </Link>
                         </motion.div>
                     </div>
@@ -179,7 +187,7 @@ const Home = () => {
                 </div>
             </section>
 
-            <section className="py-16 sm:py-20 bg-[#fffcf4] text-slate-800">
+            <section id="contact" className="py-16 sm:py-20 bg-[#fffcf4] text-slate-800">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
                         <div>
